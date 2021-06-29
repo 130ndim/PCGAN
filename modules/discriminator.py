@@ -4,10 +4,11 @@ import numpy as np
 
 import torch
 from torch import Tensor, LongTensor
+from torch import nn
 from torch.nn import Module, ModuleList, LeakyReLU as LReLU, Sequential as Seq, Linear as Lin, \
-    Dropout, ELU, functional as F
+    Embedding as Emb, Dropout, ELU, functional as F
 
-from torch_geometric.nn import global_mean_pool
+from torch_geometric.nn import LayerNorm, global_mean_pool
 from torch_geometric.data import Data, Batch
 
 from .utils import _make_conv
@@ -61,18 +62,25 @@ class ConditionalDiscriminator(Module):
         k = config.k
         aggr = config.aggr
 
-        self.convs = ModuleList([ECConv(hc[0] + 10, hc[0] * 2, hc[1], k, aggr, nonlin=ELU())])
+        self.n_classes = config.n_classes
 
-        for in_c, out_c in zip(hc[1:-1], hc[2:]):
-            self.convs.append(ECConv(in_c + 10, in_c * 2, out_c, k, aggr, nonlin=ELU()))
+        self.cond_encoder = Seq(Emb(config.n_classes, 64), ELU(), Lin(64, 64), ELU(), Lin(64, 128))
+        self.convs = ModuleList()
+        self.norms = ModuleList()
+
+        for in_c, out_c in zip(hc[:-1], hc[1:]):
+            self.convs.append(ECConv(in_c + 128, in_c * 2, out_c, k, aggr, nonlin=ELU()))
+            self.norms.append(LayerNorm(out_c))
 
         self.act = ELU()
 
         self.ffn = Seq(
-            Lin(hc[-1] + 10, hc[-1] * 2),
-            Dropout(0.5, inplace=True),
+            Lin(hc[-1] + 128, hc[-1] * 2),
+            nn.LayerNorm(hc[-1] * 2),
             ELU(),
+            Dropout(0.5, inplace=True),
             Lin(hc[-1] * 2, hc[-1] * 2),
+            nn.LayerNorm(hc[-1] * 2),
             ELU(),
             Lin(hc[-1] * 2, 1)
         )
@@ -83,12 +91,13 @@ class ConditionalDiscriminator(Module):
         if batch is None:
             batch = torch.zeros(data.x.size(0), device=data.x.device, dtype=torch.long)
 
-        c = F.one_hot(data.y, 10)
-
+        c = self.cond_encoder(data.y)
         x = data.pos
-        for conv in self.convs:
+        for conv, norm in zip(self.convs, self.norms):
             x = conv(torch.cat([x, c[batch]], dim=1), batch)
+            x = norm(x, batch)
             x = self.act(x)
+
         x = global_mean_pool(x, batch)
 
         x = torch.cat([x, c], dim=1)

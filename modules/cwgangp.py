@@ -1,17 +1,12 @@
 import torch
+from torch.optim import Adam
 from torch.optim.lr_scheduler import MultiStepLR
-from torch import nn, Tensor
-from torch.nn import functional as F
 
 from torch_geometric.data import Data, Batch, DataLoader
-from torch_geometric.datasets import ModelNet, ShapeNet
+from torch_geometric.datasets import ModelNet
 from torch_geometric import transforms as T
 
-from torch_scatter import scatter_add
-
 import pytorch_lightning as pl
-
-import wandb
 
 from modules.generator import ConditionalGenerator
 from modules.discriminator import ConditionalDiscriminator
@@ -20,6 +15,11 @@ from config import Config
 
 
 class CWGANGP(pl.LightningModule):
+    opt_g: Adam = None
+    opt_d: Adam = None
+    sched_g: MultiStepLR = None
+    sched_d: MultiStepLR = None
+
     def __init__(self, config: Config = Config()):
         super().__init__()
         self.config = config
@@ -34,10 +34,20 @@ class CWGANGP(pl.LightningModule):
         return self.generator(x, c)
 
     def configure_optimizers(self):
-        opt_g = torch.optim.Adam(self.generator.parameters(), lr=self.config.generator.lr, betas=(0., 0.9))
-        opt_d = torch.optim.Adam(self.discriminator.parameters(), lr=self.config.discriminator.lr, betas=(0., 0.9))
-        return [{'optimizer': opt_g, 'frequency': 5, 'scheduler': MultiStepLR(opt_g, [150])},
-                {'optimizer': opt_d, 'frequency': 1, 'scheduler': MultiStepLR(opt_d, [150])}]
+        self.opt_g = Adam(self.generator.parameters(), lr=self.config.generator.lr, betas=(0., 0.9))
+        self.opt_d = Adam(self.discriminator.parameters(), lr=self.config.discriminator.lr, betas=(0., 0.9))
+        self.sched_g = MultiStepLR(
+            self.opt_g, self.config.generator.multistep_milestones, gamma=self.config.generator.lr_decay
+        )
+        self.sched_d = MultiStepLR(
+            self.opt_d, self.config.discriminator.multistep_milestones, gamma=self.config.discriminator.lr_decay
+        )
+        return [{'optimizer': self.opt_g,
+                 'frequency': self.config.generator.freq,
+                 'scheduler': self.sched_g},
+                {'optimizer': self.opt_d,
+                 'frequency': self.config.discriminator.freq,
+                 'scheduler': self.sched_d}]
 
     def _generator_loss(self, data: Batch):
         z = torch.randn(size=(data.batch.max() + 1, self.config.generator.latent_channels), device=self.device)
@@ -72,7 +82,7 @@ class CWGANGP(pl.LightningModule):
         self.log('d_loss', loss.clone(), on_epoch=True, prog_bar=True)
 
         gp = self._gradient_penalty(data, G_output) * self.config.gradient_penalty
-        self.log('gp', gp, on_epoch=True, prog_bar=True)
+        self.log('gp', gp, on_step=True, on_epoch=False, prog_bar=True)
 
         loss += gp
 
@@ -99,6 +109,9 @@ class CWGANGP(pl.LightningModule):
             loss = self._discriminator_step(batch)
         else:
             raise ValueError(f'Wrong optimizer_idx: {optimizer_idx}')
+
+        self.log('g_lr', self.sched_g.optimizer.param_groups[0]['lr'], on_step=False, on_epoch=True, prog_bar=True)
+        self.log('d_lr', self.sched_d.optimizer.param_groups[0]['lr'], on_step=False, on_epoch=True, prog_bar=True)
 
         return loss
 

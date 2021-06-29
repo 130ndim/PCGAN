@@ -1,25 +1,35 @@
-from typing import Sequence, Optional, Union, Literal
+from typing import Sequence, Optional, Union, Literal, List
 from dataclasses import dataclass
 
 
 @dataclass
 class GeneratorConfig:
     latent_channels: int = 128
-    hidden_channels: Sequence[int] = (96, 64, 48, 32, 16, 3)
-    upsamplings: Sequence[int] = (64, 2, 2, 2, 2)
-    k: int = 20
+    hidden_channels: Sequence[int] = (64, 64, 48, 48, 32, 16, 3)
+    upsamplings: Sequence[int] = (32, 2, 2, 2, 2, 2)
+    k: int = 10
     aggr: Literal['mean', 'add', 'max'] = 'mean'
+    n_classes: int = 10
+
+    freq: int = 5
 
     lr: float = 1e-4
+    lr_decay: float = 0.5
+    multistep_milestones: List[int] = (int(1e9),)
 
 
 @dataclass
 class DiscriminatorConfig:
-    hidden_channels: Sequence[int] = (3, 32, 64, 64, 128)
-    k: int = 20
+    hidden_channels: Sequence[int] = (3, 16, 32, 64, 128, 256)
+    k: int = 10
     aggr: Literal['mean', 'add', 'max'] = 'mean'
+    n_classes: int = 10
+
+    freq: int = 1
 
     lr: float = 1e-4
+    lr_decay: float = 0.5
+    multistep_milestones: List[int] = (int(1e9),)
 
 
 @dataclass
