@@ -34,6 +34,8 @@ class DiscriminatorConfig:
 
 @dataclass
 class Config:
+    data_path: str
+
     generator: GeneratorConfig = GeneratorConfig()
     discriminator: DiscriminatorConfig = DiscriminatorConfig()
 

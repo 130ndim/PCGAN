@@ -116,7 +116,7 @@ class CWGANGP(pl.LightningModule):
         return loss
 
     def train_dataloader(self):
-        ds = ModelNet('/mnt/tank/scratch/dleonov/data/modelnet',
+        ds = ModelNet(self.config.data_path,
                       name='10',
                       transform=T.Compose([T.NormalizeScale(), T.SamplePoints(self.config.n_points)]))
         dl = DataLoader(ds, batch_size=self.config.batch_size, shuffle=True, num_workers=8, drop_last=True)

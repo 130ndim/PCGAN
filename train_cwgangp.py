@@ -10,6 +10,7 @@ import argparse
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-gpu', '--gpu', dest='gpu', default=0, type=int)
+parser.add_argument('-data_save_path', '--data_save_path', dest='data_save_path', type=str, default='.')
 parser.add_argument('-batch_size', '--batch_size', dest='batch_size', default=8, type=int)
 parser.add_argument('-d_lr', '--d_lr', dest='d_lr', default=1e-4, type=float)
 parser.add_argument('-g_lr', '--g_lr', dest='g_lr', default=1e-4, type=float)
@@ -27,6 +28,7 @@ args = parser.parse_args()
 
 if __name__ == '__main__':
     config = Config(
+        data_path=args.data_save_path,
         generator=GeneratorConfig(
             lr=args.g_lr, lr_decay=args.lr_decay, multistep_milestones=args.g_multistep_milestones
         ),
